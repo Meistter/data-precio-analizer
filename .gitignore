@@ -3,8 +3,10 @@
 
 ### Node ###
 # Logs
-stores_stats.json
-resultados.txt
+stores_statsMedia.json
+stores_statsMediana.json
+resultadosMEDIA.txt
+resultadosMEDIANA.txt
 logs
 *.log
 npm-debug.log*
