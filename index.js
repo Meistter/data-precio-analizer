@@ -1,6 +1,5 @@
 const axios = require('axios');
 const fs = require('fs');
-
 const FILE_PATH = 'stores_stats.json';
 const RESULTS_PATH = 'resultados.txt';
 const IGNORE_FILE = 'ignore_stores.json';
