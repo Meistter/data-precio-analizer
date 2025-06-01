@@ -5,8 +5,9 @@ const FILE_PATH = 'stores_stats.json';
 const RESULTS_PATH = 'resultados.txt';
 const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
-const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?q=';
+const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
 const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
+const MIN_PRODUCT_COUNT = 3; // Número mínimo de productos analizados por categoría.
 
 async function fetchCategories() {
     try {
@@ -14,10 +15,7 @@ async function fetchCategories() {
         const response = await axios.get(FACETS_URL);
         let categories = response.data.categoria.map(item => item.value);
 
-        // Leer las categorías a ignorar desde el archivo
         const ignoreCategories = JSON.parse(fs.readFileSync(IGNORE_CATEGORIES_FILE));
-
-        // Filtrar categorías que estén en la lista de exclusión
         categories = categories.filter(category => !ignoreCategories.includes(category));
 
         console.log(`✅ Categorías obtenidas después de filtrar: ${categories.length}`);
@@ -45,14 +43,14 @@ async function fetchAllPages(query) {
             if (Array.isArray(data)) {
                 data.forEach(item => {
                     if (!storesData[query]) {
-                        storesData[query] = [];
+                        storesData[query] = {};
                     }
 
                     item.tiendas.forEach(tienda => {
-                        storesData[query].push({
-                            tienda: tienda.tienda,
-                            precio: tienda.precio
-                        });
+                        if (!storesData[query][tienda.tienda]) {
+                            storesData[query][tienda.tienda] = [];
+                        }
+                        storesData[query][tienda.tienda].push(tienda.precio);
                     });
                 });
             }
@@ -90,7 +88,10 @@ async function processQueries() {
 
             if (storesData) {
                 Object.keys(storesData).forEach(queryKey => {
-                    storesData[queryKey] = storesData[queryKey].filter(item => !ignoreStores.includes(item.tienda));
+                    storesData[queryKey] = Object.fromEntries(
+                        Object.entries(storesData[queryKey])
+                            .filter(([tienda, precios]) => precios.length >= MIN_PRODUCT_COUNT) // Filtrar tiendas con menos de 5 productos analizados
+                    );
                 });
 
                 allStoresData = { ...allStoresData, ...storesData };
@@ -111,59 +112,65 @@ function analyzeStoreStats() {
         const storesData = JSON.parse(rawData);
         const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
 
-        let storePricesOverall = {};
+        let storeRankings = {};
         let topStoresPerQuery = {};
 
         Object.keys(storesData).forEach(query => {
             let storePricesQuery = {};
 
-            storesData[query].forEach(({ tienda, precio }) => {
+            Object.entries(storesData[query]).forEach(([tienda, precios]) => {
                 if (ignoreStores.includes(tienda)) return;
 
-                if (!storePricesOverall[tienda]) {
-                    storePricesOverall[tienda] = { total: 0, count: 0 };
-                }
-                storePricesOverall[tienda].total += precio;
-                storePricesOverall[tienda].count += 1;
-
-                if (!storePricesQuery[tienda]) {
-                    storePricesQuery[tienda] = { total: 0, count: 0 };
-                }
-                storePricesQuery[tienda].total += precio;
-                storePricesQuery[tienda].count += 1;
+                storePricesQuery[tienda] = {
+                    precio_promedio: precios.reduce((sum, price) => sum + price, 0) / precios.length,
+                    cantidad_productos: precios.length
+                };
             });
 
             let sortedStoresQuery = Object.entries(storePricesQuery)
-                .map(([tienda, { total, count }]) => ({
+                .map(([tienda, stats]) => ({
                     tienda,
-                    precio_promedio: total / count
+                    ...stats
                 }))
                 .sort((a, b) => a.precio_promedio - b.precio_promedio)
                 .slice(0, 3);
 
+            sortedStoresQuery.forEach((store, index) => {
+                if (!storeRankings[store.tienda]) {
+                    storeRankings[store.tienda] = { first: 0, second: 0, third: 0, total: 0 };
+                }
+                if (index === 0) storeRankings[store.tienda].first += 1;
+                if (index === 1) storeRankings[store.tienda].second += 1;
+                if (index === 2) storeRankings[store.tienda].third += 1;
+                storeRankings[store.tienda].total += 1;
+            });
+
             topStoresPerQuery[query] = sortedStoresQuery;
         });
 
-        let sortedOverallStores = Object.entries(storePricesOverall)
-            .map(([tienda, { total, count }]) => ({
+        let sortedOverallStores = Object.entries(storeRankings)
+            .map(([tienda, { first, second, third, total }]) => ({
                 tienda,
-                precio_promedio: total / count
+                apariciones: total,
+                primer_lugar: first,
+                segundo_lugar: second,
+                tercer_lugar: third
             }))
-            .sort((a, b) => a.precio_promedio - b.precio_promedio)
+            .sort((a, b) => b.apariciones - a.apariciones)
             .slice(0, 3);
 
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados:\n\n`;
+        let resultsContent = `🏆 Ranking de los 3 mejores supermercados basado en frecuencia:\n\n`;
         const medals = ["🏅", "🥈", "🥉"];
 
         sortedOverallStores.forEach((store, index) => {
-            resultsContent += `${medals[index]} ${store.tienda}\n`;
+            resultsContent += `${medals[index]} ${store.tienda} - Primer lugar: ${store.primer_lugar}, Segundo lugar: ${store.segundo_lugar}, Tercer lugar: ${store.tercer_lugar}, Total: ${store.apariciones}\n`;
         });
 
-        resultsContent += `\n🔎 Top 3 mejores supermercados por cada query:\n\n`;
+        resultsContent += `\n🔎 Top 3 mejores supermercados por cada query (con estadísticas más claras):\n\n`;
         Object.keys(topStoresPerQuery).forEach(query => {
             resultsContent += `➡️ ${query}:\n`;
             topStoresPerQuery[query].forEach((store, index) => {
-                resultsContent += `${index + 1}. ${store.tienda} - Precio promedio: $${store.precio_promedio.toFixed(2)}\n`;
+                resultsContent += `${index + 1}. ${store.tienda} - Precio promedio: $${store.precio_promedio.toFixed(2)} (Productos analizados: ${store.cantidad_productos})\n`;
             });
             resultsContent += `\n`;
         });
