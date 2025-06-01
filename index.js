@@ -7,7 +7,7 @@ const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
 const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
 const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
-const MIN_PRODUCT_COUNT = 5; // Número mínimo de productos analizados por categoría.
+const MIN_PRODUCT_COUNT = 4; // Número mínimo de productos analizados por categoría.
 const fecha = () => {
   const hoy = new Date();
   const dia = hoy.getDate().toString().padStart(2, '0');
@@ -16,8 +16,6 @@ const fecha = () => {
   
   return `${dia}/${mes}/${año}`;
 };
-
-
 
 async function fetchCategories() {
     try {
@@ -124,6 +122,7 @@ function analyzeStoreStats() {
 
         let storeRankings = {};
         let topStoresPerQuery = {};
+        let bestStoresByCategory = {}; // Nuevo objeto para agrupar supermercados por categoría donde fueron TOP 1
 
         Object.keys(storesData).forEach(query => {
             let storePricesQuery = {};
@@ -149,9 +148,13 @@ function analyzeStoreStats() {
                 if (!storeRankings[store.tienda]) {
                     storeRankings[store.tienda] = { first: 0, second: 0, third: 0, total: 0 };
                 }
-                if (index === 0) storeRankings[store.tienda].first += 1;
-                if (index === 1) storeRankings[store.tienda].second += 1;
-                if (index === 2) storeRankings[store.tienda].third += 1;
+                if (index === 0) {
+                    storeRankings[store.tienda].first += 1;
+                    if (!bestStoresByCategory[store.tienda]) {
+                        bestStoresByCategory[store.tienda] = [];
+                    }
+                    bestStoresByCategory[store.tienda].push(query);
+                }
                 storeRankings[store.tienda].total += 1;
             });
 
@@ -159,16 +162,25 @@ function analyzeStoreStats() {
         });
 
         let sortedOverallStores = Object.entries(storeRankings)
-            .map(([tienda, { total }]) => tienda)
-            .sort((a, b) => storeRankings[b].total - storeRankings[a].total)
+            .map(([tienda, { total }]) => ({
+                tienda,
+                total
+            }))
+            .sort((a, b) => b.total - a.total)
             .slice(0, 3);
 
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar. Fecha: ${fecha()}:\n\n`;
+        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar. Generado el: ${fecha()}:\n\n`;
+        const medals = ["🥇", "🥈", "🥉"];
         sortedOverallStores.forEach((store, index) => {
-            resultsContent += `${index + 1}. ${store}\n`;
+            resultsContent += `${medals[index]} ${store.tienda} \n`;
         });
 
-        resultsContent += `\n🔎 Top 3 mejores supermercados por cada query:\n\n`;
+        resultsContent += `\nMejores lugares donde comprar por Rubro:\n\n`;
+        Object.entries(bestStoresByCategory).forEach(([store, categories]) => {
+            resultsContent += `➡️ ${store}: ${categories.join(", ")}\n`;
+        });
+
+        resultsContent += `\nTop 3 mejores supermercados por cada Rubro:\n\n`;
         Object.keys(topStoresPerQuery).forEach(query => {
             resultsContent += `➡️ ${query}:\n`;
             topStoresPerQuery[query].forEach((store, index) => {
