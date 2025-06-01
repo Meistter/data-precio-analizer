@@ -7,7 +7,17 @@ const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
 const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
 const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
-const MIN_PRODUCT_COUNT = 3; // Número mínimo de productos analizados por categoría.
+const MIN_PRODUCT_COUNT = 5; // Número mínimo de productos analizados por categoría.
+const fecha = () => {
+  const hoy = new Date();
+  const dia = hoy.getDate().toString().padStart(2, '0');
+  const mes = (hoy.getMonth() + 1).toString().padStart(2, '0'); // Sumamos 1 porque los meses comienzan en 0
+  const año = hoy.getFullYear().toString();
+  
+  return `${dia}/${mes}/${año}`;
+};
+
+
 
 async function fetchCategories() {
     try {
@@ -149,24 +159,16 @@ function analyzeStoreStats() {
         });
 
         let sortedOverallStores = Object.entries(storeRankings)
-            .map(([tienda, { first, second, third, total }]) => ({
-                tienda,
-                apariciones: total,
-                primer_lugar: first,
-                segundo_lugar: second,
-                tercer_lugar: third
-            }))
-            .sort((a, b) => b.apariciones - a.apariciones)
+            .map(([tienda, { total }]) => tienda)
+            .sort((a, b) => storeRankings[b].total - storeRankings[a].total)
             .slice(0, 3);
 
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados basado en frecuencia:\n\n`;
-        const medals = ["🏅", "🥈", "🥉"];
-
+        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar. Fecha: ${fecha()}:\n\n`;
         sortedOverallStores.forEach((store, index) => {
-            resultsContent += `${medals[index]} ${store.tienda} - Primer lugar: ${store.primer_lugar}, Segundo lugar: ${store.segundo_lugar}, Tercer lugar: ${store.tercer_lugar}, Total: ${store.apariciones}\n`;
+            resultsContent += `${index + 1}. ${store}\n`;
         });
 
-        resultsContent += `\n🔎 Top 3 mejores supermercados por cada query (con estadísticas más claras):\n\n`;
+        resultsContent += `\n🔎 Top 3 mejores supermercados por cada query:\n\n`;
         Object.keys(topStoresPerQuery).forEach(query => {
             resultsContent += `➡️ ${query}:\n`;
             topStoresPerQuery[query].forEach((store, index) => {
