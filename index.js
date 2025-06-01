@@ -7,7 +7,7 @@ const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
 const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
 const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
-const MIN_PRODUCT_COUNT = 4; // Número mínimo de productos analizados por categoría.
+const MIN_PRODUCT_COUNT = 3; // Número mínimo de productos analizados por categoría.
 const fecha = () => {
   const hoy = new Date();
   const dia = hoy.getDate().toString().padStart(2, '0');
