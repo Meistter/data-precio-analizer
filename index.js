@@ -1,19 +1,30 @@
 const axios = require('axios');
 const fs = require('fs');
+
 const FILE_PATH = 'stores_stats.json';
 const RESULTS_PATH = 'resultados.txt';
 const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
 const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
 const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
-const MIN_PRODUCT_COUNT = 3; // Número mínimo de productos analizados por categoría.
+const MIN_PRODUCT_COUNT = 3;
+
 const fecha = () => {
   const hoy = new Date();
   const dia = hoy.getDate().toString().padStart(2, '0');
-  const mes = (hoy.getMonth() + 1).toString().padStart(2, '0'); // Sumamos 1 porque los meses comienzan en 0
+  const mes = (hoy.getMonth() + 1).toString().padStart(2, '0');
   const año = hoy.getFullYear().toString();
   
   return `${dia}/${mes}/${año}`;
+};
+
+// Función para calcular la mediana
+const calcularMediana = (arr) => {
+  const ordenado = arr.slice().sort((a, b) => a - b);
+  const mitad = Math.floor(ordenado.length / 2);
+  return ordenado.length % 2 === 0
+    ? (ordenado[mitad - 1] + ordenado[mitad]) / 2
+    : ordenado[mitad];
 };
 
 async function fetchCategories() {
@@ -21,10 +32,8 @@ async function fetchCategories() {
         console.log("🔎 Consultando categorías...");
         const response = await axios.get(FACETS_URL);
         let categories = response.data.categoria.map(item => item.value);
-
         const ignoreCategories = JSON.parse(fs.readFileSync(IGNORE_CATEGORIES_FILE));
         categories = categories.filter(category => !ignoreCategories.includes(category));
-
         console.log(`✅ Categorías obtenidas después de filtrar: ${categories.length}`);
         return categories;
     } catch (error) {
@@ -97,7 +106,7 @@ async function processQueries() {
                 Object.keys(storesData).forEach(queryKey => {
                     storesData[queryKey] = Object.fromEntries(
                         Object.entries(storesData[queryKey])
-                            .filter(([tienda, precios]) => precios.length >= MIN_PRODUCT_COUNT) // Filtrar tiendas con menos de 5 productos analizados
+                            .filter(([tienda, precios]) => precios.length >= MIN_PRODUCT_COUNT)
                     );
                 });
 
@@ -130,7 +139,7 @@ function analyzeStoreStats() {
                 if (ignoreStores.includes(tienda)) return;
 
                 storePricesQuery[tienda] = {
-                    precio_promedio: precios.reduce((sum, price) => sum + price, 0) / precios.length,
+                    precio_mediana: calcularMediana(precios),
                     cantidad_productos: precios.length
                 };
             });
@@ -140,7 +149,7 @@ function analyzeStoreStats() {
                     tienda,
                     ...stats
                 }))
-                .sort((a, b) => a.precio_promedio - b.precio_promedio)
+                .sort((a, b) => a.precio_mediana - b.precio_mediana)
                 .slice(0, 3);
 
             sortedStoresQuery.forEach((store, index) => {
@@ -168,7 +177,7 @@ function analyzeStoreStats() {
             .sort((a, b) => b.total - a.total)
             .slice(0, 3);
 
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar. Generado el: ${fecha()}:\n\n`;
+        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar (usando mediana). Generado el: ${fecha()}:\n\n`;
         const medals = ["🥇", "🥈", "🥉"];
         sortedOverallStores.forEach((store, index) => {
             resultsContent += `${medals[index]} ${store.tienda} \n`;
@@ -183,7 +192,7 @@ function analyzeStoreStats() {
         Object.keys(topStoresPerQuery).forEach(query => {
             resultsContent += `➡️ ${query}:\n`;
             topStoresPerQuery[query].forEach((store, index) => {
-                resultsContent += `${index + 1}. ${store.tienda} - Precio promedio: $${store.precio_promedio.toFixed(2)} (Productos analizados: ${store.cantidad_productos})\n`;
+                resultsContent += `${index + 1}. ${store.tienda} - Precio mediana: $${store.precio_mediana.toFixed(2)} (Productos analizados: ${store.cantidad_productos})\n`;
             });
             resultsContent += `\n`;
         });
