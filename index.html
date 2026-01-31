@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador de Supermercados</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛒 Comparador de Supermercados</h1>
+            <p>Analiza precios reales y descubre dónde es más barato comprar tu cesta.</p>
+        </header>
+
+        <main class="dashboard">
+            <aside class="config-panel">
+                <h2>Configuración</h2>
+                
+                <div class="filter-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>Tiendas</h3>
+                        <button id="update-stores-btn" class="btn-small" title="Actualizar lista">↻</button>
+                    </div>
+                    <div id="stores-list" class="checklist">
+                        <!-- Se llena con JS -->
+                        <div class="loading">Cargando tiendas...</div>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>Categorías</h3>
+                        <button id="update-categories-btn" class="btn-small" title="Actualizar lista">↻</button>
+                    </div>
+                    <div id="categories-list" class="checklist">
+                        <!-- Se llena con JS -->
+                        <div class="loading">Cargando categorías...</div>
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="btn-primary">
+                    <span class="btn-text">Generar Análisis</span>
+                    <span class="loader hidden"></span>
+                </button>
+            </aside>
+
+            <section class="results-panel">
+                <div class="results-header">
+                    <h2>Ranking Actual</h2>
+                    <span id="last-updated" class="badge">Cargando...</span>
+                </div>
+                
+                <div id="ranking-container" class="ranking-list">
+                    <!-- Resultados aquí -->
+                    <div class="empty-state">
+                        <p>No hay datos recientes. Genera un nuevo análisis.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Datos extraídos en tiempo real de <a href="https://dataprecio.com" target="_blank">dataprecio.com</a></p>
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

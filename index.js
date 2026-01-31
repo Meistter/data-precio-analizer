@@ -2,11 +2,7 @@ const axios = require('axios');
 const fs = require('fs');
 
 const FILE_PATH = 'products_db.json';
-const RESULTS_PATH = 'ranking_supermercados.txt';
-const IGNORE_FILE = 'ignore_stores.json';
-const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
 const BASE_URL = 'https://www.dataprecio.com/api/search?categoria=';
-const FACETS_URL = 'https://www.dataprecio.com/api/search?&t=1769885378814';
 const MIN_SHARED_PRODUCTS = 5; // Mínimo de productos comparables para incluir tienda en el ranking
 
 const fecha = () => {
@@ -18,26 +14,39 @@ const fecha = () => {
   return `${dia}/${mes}/${año}`;
 };
 
-async function fetchCategories() {
+async function getFacets() {
     try {
-        console.log("🔎 Consultando categorías...");
-        const response = await axios.get(FACETS_URL);
-        const facets = response.data.facets || {};
-        const rawCategories = facets.categoria || [];
-        let categories = rawCategories.map(item => item.value);
-        const ignoreCategories = JSON.parse(fs.readFileSync(IGNORE_CATEGORIES_FILE));
-        categories = categories.filter(category => !ignoreCategories.includes(category));
-        console.log(`✅ Categorías obtenidas después de filtrar: ${categories.length}`);
-        return categories;
+        console.log("🔎 Consultando metadatos (categorías y tiendas)...");
+        const timestamp = Date.now();
+        const response = await axios.get(`https://www.dataprecio.com/api/search?&t=${timestamp}`, { 
+            timeout: 15000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json'
+            }
+        });
+        
+        const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
+        const facets = data.facets || {};
+        
+        const categories = (facets.categoria || []).map(item => item.value);
+        const stores = (facets.tienda || []).map(item => item.value);
+        console.log(`✅ Metadatos obtenidos: ${categories.length} categorías, ${stores.length} tiendas.`);
+        return { categories, stores };
     } catch (error) {
-        console.error("❌ Error al obtener categorías:", error.message);
-        return [];
+        console.error("❌ Error al obtener facetas:", error.message);
+        return { categories: [], stores: [] };
     }
 }
 
 async function fetchAllPages(query) {
     try {
-        const firstResponse = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=1`);
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/json'
+        };
+
+        const firstResponse = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=1`, { headers, timeout: 15000 });
         const totalPages = firstResponse.data.totalPages || 1;
 
         console.log(`Total de páginas encontradas para '${query}': ${totalPages}`);
@@ -46,7 +55,7 @@ async function fetchAllPages(query) {
 
         for (let page = 1; page <= totalPages; page++) {
             console.log(`Consumiendo página ${page} de '${query}'...`);
-            const response = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=${page}`);
+            const response = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=${page}`, { headers, timeout: 15000 });
             const data = response.data.hits;
 
             if (Array.isArray(data)) {
@@ -63,21 +72,16 @@ async function fetchAllPages(query) {
     }
 }
 
-async function processQueries() {
+async function generateStats(ignoredCategories = [], ignoredStores = []) {
     try {
-        const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
-        const useStoredData = process.argv[2] === "1";
-
-        if (useStoredData) {
-            console.log("📂 Leyendo el JSON almacenado...");
-            analyzeStoreStats();
-            return;
-        }
-
-        const queries = await fetchCategories();
+        const facets = await getFacets();
+        const allCategories = facets.categories;
+        
+        // Filtrar categorías a procesar
+        const queries = allCategories.filter(cat => !ignoredCategories.includes(cat));
+        
         if (queries.length === 0) {
-            console.error("❌ No se pudieron obtener categorías, abortando ejecución.");
-            return;
+            throw new Error("No hay categorías seleccionadas para analizar.");
         }
 
         let allProductsMap = {};
@@ -96,20 +100,18 @@ async function processQueries() {
             }
         }
 
-        fs.writeFileSync(FILE_PATH, JSON.stringify(allProductsMap, null, 2));
-        console.log(`✅ Base de datos de productos guardada en ${FILE_PATH}`);
-        analyzeStoreStats();
+        // Opcional: Guardar cache local si se desea, pero para web no es estrictamente necesario
+        // fs.writeFileSync(FILE_PATH, JSON.stringify(allProductsMap, null, 2));
+        
+        return analyzeStoreStats(allProductsMap, ignoredStores);
     } catch (error) {
         console.error('Error al procesar los queries:', error.message);
+        throw error;
     }
 }
 
-function analyzeStoreStats() {
+function analyzeStoreStats(productsMap, ignoredStores) {
     try {
-        const rawData = fs.readFileSync(FILE_PATH);
-        const productsMap = JSON.parse(rawData);
-        const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
-
         let storeStats = {}; // { StoreName: { sumStorePrice: 0, sumMarketPrice: 0, count: 0 } }
 
         // 1. Iterar productos para calcular el Índice de Precios
@@ -146,24 +148,11 @@ function analyzeStoreStats() {
             .filter(r => r.productosComparados >= MIN_SHARED_PRODUCTS) // Filtrar tiendas con poca data comparable
             .sort((a, b) => a.indiceGlobal - b.indiceGlobal); // Menor índice es mejor
 
-        // 3. Generar Reporte
-        let resultsContent = `🏆 Ranking de Supermercados por Costo de Cesta (Impacto real en el bolsillo). Generado el: ${fecha()}:\n`;
-        resultsContent += `(Comparación de la suma de precios de productos idénticos vs el promedio del mercado)\n\n`;
-        
-        const medals = ["🥇", "🥈", "🥉"];
-        
-        rankings.forEach((r, index) => {
-            const medal = medals[index] || `${index + 1}.`;
-            const percentage = ((r.indiceGlobal - 1) * 100).toFixed(2);
-            const status = r.indiceGlobal < 1 ? "más barato" : "más caro";
-            resultsContent += `${medal} ${r.tienda}\n   Índice: ${r.indiceGlobal.toFixed(4)} (${Math.abs(percentage)}% ${status} que el promedio)\n   Productos comparados: ${r.productosComparados}\n\n`;
-        });
-
-        fs.writeFileSync(RESULTS_PATH, resultsContent);
-        console.log(`📊 Resultados generados y guardados en ${RESULTS_PATH}`);
+        return rankings;
     } catch (error) {
         console.error('Error al analizar los datos:', error.message);
+        return [];
     }
 }
 
-processQueries();
+module.exports = { getFacets, generateStats };
