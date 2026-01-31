@@ -119,7 +119,7 @@ function analyzeStoreStats(productsMap, ignoredStores) {
             if (!product.tiendas || product.tiendas.length < 2) return; // Solo productos que estén en al menos 2 tiendas para comparar
 
             // Filtrar tiendas ignoradas
-            const validStores = product.tiendas.filter(t => !ignoreStores.includes(t.tienda));
+            const validStores = product.tiendas.filter(t => !ignoredStores.includes(t.tienda));
             if (validStores.length < 2) return;
 
             // Calcular precio promedio del producto en el mercado actual

@@ -34,6 +34,9 @@ function renderChecklist(elementId, items, namePrefix) {
     const container = document.getElementById(elementId);
     container.innerHTML = '';
     
+    const storageKey = `ignored_${namePrefix}`;
+    const ignoredItems = JSON.parse(localStorage.getItem(storageKey)) || [];
+
     items.sort().forEach(item => {
         const div = document.createElement('div');
         div.className = 'checkbox-item';
@@ -42,9 +45,17 @@ function renderChecklist(elementId, items, namePrefix) {
         checkbox.type = 'checkbox';
         checkbox.id = `${namePrefix}-${item}`;
         checkbox.value = item;
-        checkbox.checked = true; // Marcado por defecto (Incluir)
+        
+        // Si el item está en la lista de ignorados, desmarcamos. Si no, marcamos por defecto.
+        checkbox.checked = !ignoredItems.includes(item);
+        
         checkbox.name = namePrefix; // Para agrupar si fuera form
         
+        // Listener para guardar en localStorage
+        checkbox.addEventListener('change', () => {
+            updateLocalStorage(storageKey, item, checkbox.checked);
+        });
+
         const label = document.createElement('label');
         label.htmlFor = `${namePrefix}-${item}`;
         label.textContent = item;
@@ -53,6 +64,22 @@ function renderChecklist(elementId, items, namePrefix) {
         div.appendChild(label);
         container.appendChild(div);
     });
+}
+
+function updateLocalStorage(key, item, isChecked) {
+    let ignoredItems = JSON.parse(localStorage.getItem(key)) || [];
+    
+    if (isChecked) {
+        // Si se marca, lo sacamos de la lista de ignorados (lo queremos incluir)
+        ignoredItems = ignoredItems.filter(i => i !== item);
+    } else {
+        // Si se desmarca, lo agregamos a la lista de ignorados
+        if (!ignoredItems.includes(item)) {
+            ignoredItems.push(item);
+        }
+    }
+    
+    localStorage.setItem(key, JSON.stringify(ignoredItems));
 }
 
 async function updateFacets() {
