@@ -19,6 +19,11 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Servir el logo como archivo estático desde la raíz
+app.get('/logo.png', (req, res) => {
+    res.sendFile(path.join(__dirname, 'logo.png'));
+});
+
 // Inicializar DB al arrancar
 initDB();
 
