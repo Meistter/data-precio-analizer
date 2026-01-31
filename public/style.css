@@ -23,6 +23,7 @@ body {
     max-width: 1200px;
     margin: 0 auto;
     padding: 2rem;
+    padding-top: 0 !important;
     display: flex;
     flex-direction: column;
     min-height: 100vh;
