@@ -35,7 +35,18 @@ function renderChecklist(elementId, items, namePrefix) {
     container.innerHTML = '';
     
     const storageKey = `ignored_${namePrefix}`;
-    const ignoredItems = JSON.parse(localStorage.getItem(storageKey)) || [];
+    let ignoredItems = JSON.parse(localStorage.getItem(storageKey));
+
+    if (ignoredItems === null) {
+        if (namePrefix === 'category') {
+            ignoredItems = ["Alimentos Para Bebe","Audio","Bebidas De Maquina","Bebidas Relajantes","Cargadores","Cuidado De Los Labios","Cuidado De Uñas","Cuidado Del Bebe","Cuidado Facial","Cuidado Sexual","Deslactosados","Desodorantes Clinicos","Equipos Medicos","Harinas Integrales","Licores","Mascotas","Medicamentos","Outdoor","Reposteria","Snacks Integrales","Tortas","Fumadores","Carnes Blancas De Ave","Carnes De Pescado","Carnes Rojas De Res","Carnes Blancas De Cerdo","Azucares Y Endulzantes","Cuidado Del Hogar"];
+        } else if (namePrefix === 'store') {
+            ignoredItems = ["Ferreterias EPA","Licores Mundiales","Kalea","Alianza Licorera","Bodegon Be Plus Santa Fe","Celicor Boutique","Automercados Emporium"];
+        } else {
+            ignoredItems = [];
+        }
+        localStorage.setItem(storageKey, JSON.stringify(ignoredItems));
+    }
 
     items.sort().forEach(item => {
         const div = document.createElement('div');
