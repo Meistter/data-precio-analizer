@@ -1,15 +1,13 @@
 const axios = require('axios');
 const fs = require('fs');
 
-const FILE_PATH = 'stores_statsMediana.json';
-const FILE_PATH2 = 'stores_statsMedia.json';
-const RESULTS_PATH = 'resultadosMEDIANA.txt';
-const RESULTS_PATH2 = 'resultadosMEDIA.txt';
+const FILE_PATH = 'products_db.json';
+const RESULTS_PATH = 'ranking_supermercados.txt';
 const IGNORE_FILE = 'ignore_stores.json';
 const IGNORE_CATEGORIES_FILE = 'ignore_categories.json';
-const BASE_URL = 'https://dataprecio-com-backend.onrender.com/api/search?categoria=';
-const FACETS_URL = 'https://dataprecio-com-backend.onrender.com/api/facets?';
-const MIN_PRODUCT_COUNT = 3;
+const BASE_URL = 'https://www.dataprecio.com/api/search?categoria=';
+const FACETS_URL = 'https://www.dataprecio.com/api/search?&t=1769885378814';
+const MIN_SHARED_PRODUCTS = 5; // Mínimo de productos comparables para incluir tienda en el ranking
 
 const fecha = () => {
   const hoy = new Date();
@@ -20,20 +18,13 @@ const fecha = () => {
   return `${dia}/${mes}/${año}`;
 };
 
-// Función para calcular la mediana
-const calcularMediana = (arr) => {
-  const ordenado = arr.slice().sort((a, b) => a - b);
-  const mitad = Math.floor(ordenado.length / 2);
-  return ordenado.length % 2 === 0
-    ? (ordenado[mitad - 1] + ordenado[mitad]) / 2
-    : ordenado[mitad];
-};
-
 async function fetchCategories() {
     try {
         console.log("🔎 Consultando categorías...");
         const response = await axios.get(FACETS_URL);
-        let categories = response.data.categoria.map(item => item.value);
+        const facets = response.data.facets || {};
+        const rawCategories = facets.categoria || [];
+        let categories = rawCategories.map(item => item.value);
         const ignoreCategories = JSON.parse(fs.readFileSync(IGNORE_CATEGORIES_FILE));
         categories = categories.filter(category => !ignoreCategories.includes(category));
         console.log(`✅ Categorías obtenidas después de filtrar: ${categories.length}`);
@@ -51,7 +42,7 @@ async function fetchAllPages(query) {
 
         console.log(`Total de páginas encontradas para '${query}': ${totalPages}`);
 
-        let storesData = {};
+        let products = [];
 
         for (let page = 1; page <= totalPages; page++) {
             console.log(`Consumiendo página ${page} de '${query}'...`);
@@ -59,22 +50,13 @@ async function fetchAllPages(query) {
             const data = response.data.hits;
 
             if (Array.isArray(data)) {
-                data.forEach(item => {
-                    if (!storesData[query]) {
-                        storesData[query] = {};
-                    }
-
-                    item.tiendas.forEach(tienda => {
-                        if (!storesData[query][tienda.tienda]) {
-                            storesData[query][tienda.tienda] = [];
-                        }
-                        storesData[query][tienda.tienda].push(tienda.precio);
-                    });
-                });
+                // Guardamos los productos tal cual vienen, sin agrupar por tienda todavía
+                // para no perder la referencia de qué producto es.
+                products.push(...data);
             }
         }
 
-        return storesData;
+        return products;
     } catch (error) {
         console.error(`Error al obtener datos para '${query}':`, error.message);
         return null;
@@ -98,26 +80,24 @@ async function processQueries() {
             return;
         }
 
-        let allStoresData = {};
+        let allProductsMap = {};
 
         for (const query of queries) {
             console.log(`🔎 Ejecutando búsqueda para: ${query}`);
-            const storesData = await fetchAllPages(query);
+            const products = await fetchAllPages(query);
 
-            if (storesData) {
-                Object.keys(storesData).forEach(queryKey => {
-                    storesData[queryKey] = Object.fromEntries(
-                        Object.entries(storesData[queryKey])
-                            .filter(([tienda, precios]) => precios.length >= MIN_PRODUCT_COUNT)
-                    );
+            if (products) {
+                products.forEach(product => {
+                    // Usamos productID como clave para evitar duplicados si un producto sale en varias categorías
+                    if (!allProductsMap[product.productID]) {
+                        allProductsMap[product.productID] = product;
+                    }
                 });
-
-                allStoresData = { ...allStoresData, ...storesData };
             }
         }
 
-        fs.writeFileSync(FILE_PATH, JSON.stringify(allStoresData, null, 2));
-        console.log(`✅ Todos los datos guardados en ${FILE_PATH}`);
+        fs.writeFileSync(FILE_PATH, JSON.stringify(allProductsMap, null, 2));
+        console.log(`✅ Base de datos de productos guardada en ${FILE_PATH}`);
         analyzeStoreStats();
     } catch (error) {
         console.error('Error al procesar los queries:', error.message);
@@ -127,76 +107,56 @@ async function processQueries() {
 function analyzeStoreStats() {
     try {
         const rawData = fs.readFileSync(FILE_PATH);
-        const storesData = JSON.parse(rawData);
+        const productsMap = JSON.parse(rawData);
         const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
 
-        let storeRankings = {};
-        let topStoresPerQuery = {};
-        let bestStoresByCategory = {}; // Nuevo objeto para agrupar supermercados por categoría donde fueron TOP 1
+        let storeStats = {}; // { StoreName: { sumStorePrice: 0, sumMarketPrice: 0, count: 0 } }
 
-        Object.keys(storesData).forEach(query => {
-            let storePricesQuery = {};
+        // 1. Iterar productos para calcular el Índice de Precios
+        Object.values(productsMap).forEach(product => {
+            if (!product.tiendas || product.tiendas.length < 2) return; // Solo productos que estén en al menos 2 tiendas para comparar
 
-            Object.entries(storesData[query]).forEach(([tienda, precios]) => {
-                if (ignoreStores.includes(tienda)) return;
+            // Filtrar tiendas ignoradas
+            const validStores = product.tiendas.filter(t => !ignoreStores.includes(t.tienda));
+            if (validStores.length < 2) return;
 
-                storePricesQuery[tienda] = {
-                    precio_mediana: calcularMediana(precios),
-                    cantidad_productos: precios.length
-                };
-            });
+            // Calcular precio promedio del producto en el mercado actual
+            const avgPrice = validStores.reduce((sum, t) => sum + t.precio, 0) / validStores.length;
 
-            let sortedStoresQuery = Object.entries(storePricesQuery)
-                .map(([tienda, stats]) => ({
-                    tienda,
-                    ...stats
-                }))
-                .sort((a, b) => a.precio_mediana - b.precio_mediana)
-                .slice(0, 3);
+            // Calcular totales para cada tienda (Suma de precios vs Suma de promedios)
+            validStores.forEach(t => {
+                const storeName = t.tienda;
 
-            sortedStoresQuery.forEach((store, index) => {
-                if (!storeRankings[store.tienda]) {
-                    storeRankings[store.tienda] = { first: 0, second: 0, third: 0, total: 0 };
+                if (!storeStats[storeName]) {
+                    storeStats[storeName] = { sumStorePrice: 0, sumMarketPrice: 0, count: 0 };
                 }
-                if (index === 0) {
-                    storeRankings[store.tienda].first += 1;
-                    if (!bestStoresByCategory[store.tienda]) {
-                        bestStoresByCategory[store.tienda] = [];
-                    }
-                    bestStoresByCategory[store.tienda].push(query);
-                }
-                storeRankings[store.tienda].total += 1;
+                storeStats[storeName].sumStorePrice += t.precio;
+                storeStats[storeName].sumMarketPrice += avgPrice;
+                storeStats[storeName].count++;
             });
-
-            topStoresPerQuery[query] = sortedStoresQuery;
         });
 
-        let sortedOverallStores = Object.entries(storeRankings)
-            .map(([tienda, { total }]) => ({
-                tienda,
-                total
+        // 2. Calcular el Índice Global por tienda (Cesta Agregada)
+        let rankings = Object.entries(storeStats)
+            .map(([store, data]) => ({
+                tienda: store,
+                indiceGlobal: (data.sumStorePrice / data.sumMarketPrice),
+                productosComparados: data.count
             }))
-            .sort((a, b) => b.total - a.total)
-            .slice(0, 3);
+            .filter(r => r.productosComparados >= MIN_SHARED_PRODUCTS) // Filtrar tiendas con poca data comparable
+            .sort((a, b) => a.indiceGlobal - b.indiceGlobal); // Menor índice es mejor
 
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar (Usando mediana). Generado el: ${fecha()}:\n\n`;
+        // 3. Generar Reporte
+        let resultsContent = `🏆 Ranking de Supermercados por Costo de Cesta (Impacto real en el bolsillo). Generado el: ${fecha()}:\n`;
+        resultsContent += `(Comparación de la suma de precios de productos idénticos vs el promedio del mercado)\n\n`;
+        
         const medals = ["🥇", "🥈", "🥉"];
-        sortedOverallStores.forEach((store, index) => {
-            resultsContent += `${medals[index]} ${store.tienda} \n`;
-        });
-
-        resultsContent += `\nMejores lugares donde comprar por Rubro:\n\n`;
-        Object.entries(bestStoresByCategory).forEach(([store, categories]) => {
-            resultsContent += `➡️ ${store}: ${categories.join(", ")}\n`;
-        });
-
-        resultsContent += `\nTop 3 mejores supermercados por cada Rubro:\n\n`;
-        Object.keys(topStoresPerQuery).forEach(query => {
-            resultsContent += `➡️ ${query}:\n`;
-            topStoresPerQuery[query].forEach((store, index) => {
-                resultsContent += `${index + 1}. ${store.tienda} - Precio mediana: $${store.precio_mediana.toFixed(2)} (Productos analizados: ${store.cantidad_productos})\n`;
-            });
-            resultsContent += `\n`;
+        
+        rankings.forEach((r, index) => {
+            const medal = medals[index] || `${index + 1}.`;
+            const percentage = ((r.indiceGlobal - 1) * 100).toFixed(2);
+            const status = r.indiceGlobal < 1 ? "más barato" : "más caro";
+            resultsContent += `${medal} ${r.tienda}\n   Índice: ${r.indiceGlobal.toFixed(4)} (${Math.abs(percentage)}% ${status} que el promedio)\n   Productos comparados: ${r.productosComparados}\n\n`;
         });
 
         fs.writeFileSync(RESULTS_PATH, resultsContent);
@@ -207,185 +167,3 @@ function analyzeStoreStats() {
 }
 
 processQueries();
-
-
-async function fetchCategories2() {
-    try {
-        console.log("🔎 Consultando categorías...");
-        const response = await axios.get(FACETS_URL);
-        let categories = response.data.categoria.map(item => item.value);
-
-        const ignoreCategories = JSON.parse(fs.readFileSync(IGNORE_CATEGORIES_FILE));
-        categories = categories.filter(category => !ignoreCategories.includes(category));
-
-        console.log(`✅ Categorías obtenidas después de filtrar: ${categories.length}`);
-        return categories;
-    } catch (error) {
-        console.error("❌ Error al obtener categorías:", error.message);
-        return [];
-    }
-}
-
-async function fetchAllPages2(query) {
-    try {
-        const firstResponse = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=1`);
-        const totalPages = firstResponse.data.totalPages || 1;
-
-        console.log(`Total de páginas encontradas para '${query}': ${totalPages}`);
-
-        let storesData = {};
-
-        for (let page = 1; page <= totalPages; page++) {
-            console.log(`Consumiendo página ${page} de '${query}'...`);
-            const response = await axios.get(`${BASE_URL}${encodeURIComponent(query)}&page=${page}`);
-            const data = response.data.hits;
-
-            if (Array.isArray(data)) {
-                data.forEach(item => {
-                    if (!storesData[query]) {
-                        storesData[query] = {};
-                    }
-
-                    item.tiendas.forEach(tienda => {
-                        if (!storesData[query][tienda.tienda]) {
-                            storesData[query][tienda.tienda] = [];
-                        }
-                        storesData[query][tienda.tienda].push(tienda.precio);
-                    });
-                });
-            }
-        }
-
-        return storesData;
-    } catch (error) {
-        console.error(`Error al obtener datos para '${query}':`, error.message);
-        return null;
-    }
-}
-
-async function processQueries2() {
-    try {
-        const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
-        const useStoredData = process.argv[2] === "1";
-
-        if (useStoredData) {
-            console.log("📂 Leyendo el JSON almacenado...");
-            analyzeStoreStats2();
-            return;
-        }
-
-        const queries = await fetchCategories2();
-        if (queries.length === 0) {
-            console.error("❌ No se pudieron obtener categorías, abortando ejecución.");
-            return;
-        }
-
-        let allStoresData = {};
-
-        for (const query of queries) {
-            console.log(`🔎 Ejecutando búsqueda para: ${query}`);
-            const storesData = await fetchAllPages2(query);
-
-            if (storesData) {
-                Object.keys(storesData).forEach(queryKey => {
-                    storesData[queryKey] = Object.fromEntries(
-                        Object.entries(storesData[queryKey])
-                            .filter(([tienda, precios]) => precios.length >= MIN_PRODUCT_COUNT) // Filtrar tiendas con menos de 5 productos analizados
-                    );
-                });
-
-                allStoresData = { ...allStoresData, ...storesData };
-            }
-        }
-
-        fs.writeFileSync(FILE_PATH2, JSON.stringify(allStoresData, null, 2));
-        console.log(`✅ Todos los datos guardados en ${FILE_PATH2}`);
-        analyzeStoreStats2();
-    } catch (error) {
-        console.error('Error al procesar los queries:', error.message);
-    }
-}
-
-function analyzeStoreStats2() {
-    try {
-        const rawData = fs.readFileSync(FILE_PATH2);
-        const storesData = JSON.parse(rawData);
-        const ignoreStores = JSON.parse(fs.readFileSync(IGNORE_FILE));
-
-        let storeRankings = {};
-        let topStoresPerQuery = {};
-        let bestStoresByCategory = {}; // Nuevo objeto para agrupar supermercados por categoría donde fueron TOP 1
-
-        Object.keys(storesData).forEach(query => {
-            let storePricesQuery = {};
-
-            Object.entries(storesData[query]).forEach(([tienda, precios]) => {
-                if (ignoreStores.includes(tienda)) return;
-
-                storePricesQuery[tienda] = {
-                    precio_promedio: precios.reduce((sum, price) => sum + price, 0) / precios.length,
-                    cantidad_productos: precios.length
-                };
-            });
-
-            let sortedStoresQuery = Object.entries(storePricesQuery)
-                .map(([tienda, stats]) => ({
-                    tienda,
-                    ...stats
-                }))
-                .sort((a, b) => a.precio_promedio - b.precio_promedio)
-                .slice(0, 3);
-
-            sortedStoresQuery.forEach((store, index) => {
-                if (!storeRankings[store.tienda]) {
-                    storeRankings[store.tienda] = { first: 0, second: 0, third: 0, total: 0 };
-                }
-                if (index === 0) {
-                    storeRankings[store.tienda].first += 1;
-                    if (!bestStoresByCategory[store.tienda]) {
-                        bestStoresByCategory[store.tienda] = [];
-                    }
-                    bestStoresByCategory[store.tienda].push(query);
-                }
-                storeRankings[store.tienda].total += 1;
-            });
-
-            topStoresPerQuery[query] = sortedStoresQuery;
-        });
-
-        let sortedOverallStores = Object.entries(storeRankings)
-            .map(([tienda, { total }]) => ({
-                tienda,
-                total
-            }))
-            .sort((a, b) => b.total - a.total)
-            .slice(0, 3);
-
-        let resultsContent = `🏆 Ranking de los 3 mejores supermercados para comprar (Usando promedio). Generado el: ${fecha()}:\n\n`;
-        const medals = ["🥇", "🥈", "🥉"];
-        sortedOverallStores.forEach((store, index) => {
-            resultsContent += `${medals[index]} ${store.tienda} \n`;
-        });
-
-        resultsContent += `\nMejores lugares donde comprar por Rubro:\n\n`;
-        Object.entries(bestStoresByCategory).forEach(([store, categories]) => {
-            resultsContent += `➡️ ${store}: ${categories.join(", ")}\n`;
-        });
-
-        resultsContent += `\nTop 3 mejores supermercados por cada Rubro:\n\n`;
-        Object.keys(topStoresPerQuery).forEach(query => {
-            resultsContent += `➡️ ${query}:\n`;
-            topStoresPerQuery[query].forEach((store, index) => {
-                resultsContent += `${index + 1}. ${store.tienda} - Precio promedio: $${store.precio_promedio.toFixed(2)} (Productos analizados: ${store.cantidad_productos})\n`;
-            });
-            resultsContent += `\n`;
-        });
-
-        fs.writeFileSync(RESULTS_PATH2, resultsContent);
-        console.log(`📊 Resultados generados y guardados en ${RESULTS_PATH2}`);
-    } catch (error) {
-        console.error('Error al analizar los datos:', error.message);
-    }
-}
-
-processQueries2();

@@ -1,0 +1,39 @@
+🏆 Ranking de Supermercados por Costo de Cesta (Impacto real en el bolsillo). Generado el: 31/01/2026:
+(Comparación de la suma de precios de productos idénticos vs el promedio del mercado)
+
+🥇 Farmatodo
+   Índice: 0.9526 (4.74% más barato que el promedio)
+   Productos comparados: 708
+
+🥈 Plansuarez
+   Índice: 0.9705 (2.95% más barato que el promedio)
+   Productos comparados: 865
+
+🥉 Rio Supermarket
+   Índice: 0.9745 (2.55% más barato que el promedio)
+   Productos comparados: 133
+
+4. Central Madeirense
+   Índice: 0.9844 (1.56% más barato que el promedio)
+   Productos comparados: 1078
+
+5. Gama
+   Índice: 1.0169 (1.69% más caro que el promedio)
+   Productos comparados: 834
+
+6. Plazas
+   Índice: 1.0353 (3.53% más caro que el promedio)
+   Productos comparados: 728
+
+7. Forum
+   Índice: 1.0442 (4.42% más caro que el promedio)
+   Productos comparados: 497
+
+8. Unicasa
+   Índice: 1.0448 (4.48% más caro que el promedio)
+   Productos comparados: 446
+
+9. Centro de Tata
+   Índice: 1.0452 (4.52% más caro que el promedio)
+   Productos comparados: 5
+
