@@ -198,6 +198,11 @@ function renderRanking(ranking) {
     ranking.forEach((item, index) => {
         const card = document.createElement('div');
         card.className = 'ranking-card';
+        // Aseguramos layout flexible para alinear a la derecha
+        card.style.display = 'flex';
+        card.style.alignItems = 'center';
+        card.style.justifyContent = 'space-between';
+        card.style.flexWrap = 'wrap';
         
         const percentage = ((item.indiceGlobal - 1) * 100).toFixed(2);
         const isCheaper = item.indiceGlobal < 1;
@@ -205,18 +210,40 @@ function renderRanking(ranking) {
         const statusClass = isCheaper ? 'cheaper' : 'expensive';
         const medal = medals[index] || `#${index + 1}`;
         
+        // Generar HTML de categorías
+        const categoriesHtml = (item.topCategories || []).length > 0 
+            ? item.topCategories.map(c => {
+                const catDiff = ((c.indice - 1) * 100).toFixed(1);
+                const catSymbol = c.indice < 1 ? '↓' : '↑';
+                const color = c.indice < 1 ? '#16a34a' : '#dc2626';
+                return `<li style="font-size: 0.8em; margin-bottom: 2px; display: flex; justify-content: space-between;">
+                    <span style="font-weight:500; margin-right: 10px;">${c.category}</span>
+                    <span style="color:${color}">${Math.abs(catDiff)}% ${catSymbol}</span>
+                </li>`;
+            }).join('')
+            : '<li style="font-size: 0.8em; color: #999;">Sin datos suficientes</li>';
+
         card.innerHTML = `
-            <div class="rank-pos">${medal}</div>
-            <div class="store-info">
-                <h3 class="store-name">${item.tienda}</h3>
-                <p class="store-stats">
-                    Índice: <strong>${Number(item.indiceGlobal).toFixed(4)}</strong> 
-                    <span class="index-badge ${statusClass}">
-                        ${Math.abs(percentage)}% ${statusText}
-                    </span>
-                    que el promedio
-                </p>
-                <small style="color: #94a3b8;">Basado en ${item.productosComparados} productos idénticos</small>
+            <div style="display:flex; align-items:center; flex: 1; min-width: 300px;">
+                <div class="rank-pos">${medal}</div>
+                <div class="store-info">
+                    <h3 class="store-name">${item.tienda}</h3>
+                    <p class="store-stats">
+                        Índice: <strong>${Number(item.indiceGlobal).toFixed(4)}</strong> 
+                        <span class="index-badge ${statusClass}">
+                            ${Math.abs(percentage)}% ${statusText}
+                        </span>
+                        que el promedio
+                    </p>
+                    <small style="color: #94a3b8;">Basado en ${item.productosComparados} productos idénticos</small>
+                </div>
+            </div>
+            
+            <div class="store-categories" style="margin-left: 20px; min-width: 220px; text-align: right; border-left: 1px solid #eee; padding-left: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 0.75em; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Categorías más económicas</h4>
+                <ul style="list-style: none; padding: 0; margin: 0;">
+                    ${categoriesHtml}
+                </ul>
             </div>
         `;
         

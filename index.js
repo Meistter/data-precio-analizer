@@ -94,6 +94,7 @@ async function generateStats(ignoredCategories = [], ignoredStores = []) {
                 products.forEach(product => {
                     // Usamos productID como clave para evitar duplicados si un producto sale en varias categorías
                     if (!allProductsMap[product.productID]) {
+                        product.category = query; // Guardamos la categoría para el análisis
                         allProductsMap[product.productID] = product;
                     }
                 });
@@ -112,7 +113,7 @@ async function generateStats(ignoredCategories = [], ignoredStores = []) {
 
 function analyzeStoreStats(productsMap, ignoredStores) {
     try {
-        let storeStats = {}; // { StoreName: { sumStorePrice: 0, sumMarketPrice: 0, count: 0 } }
+        let storeStats = {}; // { StoreName: { sumStorePrice: 0, sumMarketPrice: 0, count: 0, categories: {} } }
 
         // 1. Iterar productos para calcular el Índice de Precios
         Object.values(productsMap).forEach(product => {
@@ -124,27 +125,50 @@ function analyzeStoreStats(productsMap, ignoredStores) {
 
             // Calcular precio promedio del producto en el mercado actual
             const avgPrice = validStores.reduce((sum, t) => sum + t.precio, 0) / validStores.length;
+            const category = product.category || 'Otros';
 
             // Calcular totales para cada tienda (Suma de precios vs Suma de promedios)
             validStores.forEach(t => {
                 const storeName = t.tienda;
 
                 if (!storeStats[storeName]) {
-                    storeStats[storeName] = { sumStorePrice: 0, sumMarketPrice: 0, count: 0 };
+                    storeStats[storeName] = { sumStorePrice: 0, sumMarketPrice: 0, count: 0, categories: {} };
                 }
                 storeStats[storeName].sumStorePrice += t.precio;
                 storeStats[storeName].sumMarketPrice += avgPrice;
                 storeStats[storeName].count++;
+
+                // Estadísticas por categoría
+                if (!storeStats[storeName].categories[category]) {
+                    storeStats[storeName].categories[category] = { sumStorePrice: 0, sumMarketPrice: 0, count: 0 };
+                }
+                storeStats[storeName].categories[category].sumStorePrice += t.precio;
+                storeStats[storeName].categories[category].sumMarketPrice += avgPrice;
+                storeStats[storeName].categories[category].count++;
             });
         });
 
         // 2. Calcular el Índice Global por tienda (Cesta Agregada)
         let rankings = Object.entries(storeStats)
-            .map(([store, data]) => ({
-                tienda: store,
-                indiceGlobal: (data.sumStorePrice / data.sumMarketPrice),
-                productosComparados: data.count
-            }))
+            .map(([store, data]) => {
+                // Calcular top categorías más económicas
+                const topCategories = Object.entries(data.categories)
+                    .map(([cat, catData]) => ({
+                        category: cat,
+                        indice: catData.sumStorePrice / catData.sumMarketPrice,
+                        count: catData.count
+                    }))
+                    .filter(c => c.count >= 3) // Mínimo 3 productos para considerar la categoría relevante
+                    .sort((a, b) => a.indice - b.indice)
+                    .slice(0, 5);
+
+                return {
+                    tienda: store,
+                    indiceGlobal: (data.sumStorePrice / data.sumMarketPrice),
+                    productosComparados: data.count,
+                    topCategories
+                };
+            })
             .filter(r => r.productosComparados >= MIN_SHARED_PRODUCTS) // Filtrar tiendas con poca data comparable
             .sort((a, b) => a.indiceGlobal - b.indiceGlobal); // Menor índice es mejor
 
