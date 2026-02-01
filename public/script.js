@@ -1,3 +1,9 @@
+const DEFAULT_IGNORED_CATEGORIES = ["Alimentos Para Bebe","Audio","Bebidas De Maquina","Bebidas Relajantes","Cargadores","Cuidado De Los Labios","Cuidado De Uñas","Cuidado Del Bebe","Cuidado Facial","Cuidado Sexual","Deslactosados","Desodorantes Clinicos","Equipos Medicos","Harinas Integrales","Licores","Mascotas","Medicamentos","Outdoor","Reposteria","Snacks Integrales","Tortas","Fumadores","Carnes Blancas De Ave","Carnes De Pescado","Carnes Rojas De Res","Carnes Blancas De Cerdo","Azucares Y Endulzantes","Cuidado Del Hogar"];
+const DEFAULT_IGNORED_STORES = ["Ferreterias EPA","Licores Mundiales","Kalea","Alianza Licorera","Bodegon Be Plus Santa Fe","Celicor Boutique","Automercados Emporium"];
+
+let currentStores = [];
+let currentCategories = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     loadFacets();
     loadLatestReport();
@@ -5,6 +11,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generate-btn').addEventListener('click', generateReport);
     document.getElementById('update-stores-btn').addEventListener('click', updateFacets);
     document.getElementById('update-categories-btn').addEventListener('click', updateFacets);
+    
+    document.getElementById('clear-stores-btn').addEventListener('click', () => clearSelection('store'));
+    document.getElementById('reset-stores-btn').addEventListener('click', () => resetSelection('store'));
+    document.getElementById('clear-categories-btn').addEventListener('click', () => clearSelection('category'));
+    document.getElementById('reset-categories-btn').addEventListener('click', () => resetSelection('category'));
 });
 
 async function loadFacets() {
@@ -22,8 +33,10 @@ async function loadFacets() {
         
         if (data.error) throw new Error(data.error);
 
-        renderChecklist('stores-list', data.stores || [], 'store');
-        renderChecklist('categories-list', data.categories || [], 'category');
+        currentStores = data.stores || [];
+        currentCategories = data.categories || [];
+        renderChecklist('stores-list', currentStores, 'store');
+        renderChecklist('categories-list', currentCategories, 'category');
     } catch (error) {
         console.error('Error cargando facetas:', error);
         document.getElementById('stores-list').innerHTML = `<div style="color:red; padding:10px;">${error.message}</div>`;
@@ -39,9 +52,9 @@ function renderChecklist(elementId, items, namePrefix) {
 
     if (ignoredItems === null) {
         if (namePrefix === 'category') {
-            ignoredItems = ["Alimentos Para Bebe","Audio","Bebidas De Maquina","Bebidas Relajantes","Cargadores","Cuidado De Los Labios","Cuidado De Uñas","Cuidado Del Bebe","Cuidado Facial","Cuidado Sexual","Deslactosados","Desodorantes Clinicos","Equipos Medicos","Harinas Integrales","Licores","Mascotas","Medicamentos","Outdoor","Reposteria","Snacks Integrales","Tortas","Fumadores","Carnes Blancas De Ave","Carnes De Pescado","Carnes Rojas De Res","Carnes Blancas De Cerdo","Azucares Y Endulzantes","Cuidado Del Hogar"];
+            ignoredItems = DEFAULT_IGNORED_CATEGORIES;
         } else if (namePrefix === 'store') {
-            ignoredItems = ["Ferreterias EPA","Licores Mundiales","Kalea","Alianza Licorera","Bodegon Be Plus Santa Fe","Celicor Boutique","Automercados Emporium"];
+            ignoredItems = DEFAULT_IGNORED_STORES;
         } else {
             ignoredItems = [];
         }
@@ -93,6 +106,22 @@ function updateLocalStorage(key, item, isChecked) {
     localStorage.setItem(key, JSON.stringify(ignoredItems));
 }
 
+function clearSelection(namePrefix) {
+    const items = namePrefix === 'store' ? currentStores : currentCategories;
+    const storageKey = `ignored_${namePrefix}`;
+    // Si limpiamos la selección (desmarcamos todo), significa que TODO está ignorado.
+    localStorage.setItem(storageKey, JSON.stringify(items));
+    renderChecklist(namePrefix === 'store' ? 'stores-list' : 'categories-list', items, namePrefix);
+}
+
+function resetSelection(namePrefix) {
+    const items = namePrefix === 'store' ? currentStores : currentCategories;
+    const storageKey = `ignored_${namePrefix}`;
+    const defaults = namePrefix === 'store' ? DEFAULT_IGNORED_STORES : DEFAULT_IGNORED_CATEGORIES;
+    localStorage.setItem(storageKey, JSON.stringify(defaults));
+    renderChecklist(namePrefix === 'store' ? 'stores-list' : 'categories-list', items, namePrefix);
+}
+
 async function updateFacets() {
     const btnStores = document.getElementById('update-stores-btn');
     const btnCats = document.getElementById('update-categories-btn');
@@ -112,8 +141,10 @@ async function updateFacets() {
         }
 
         if (result.success) {
-            renderChecklist('stores-list', result.data.stores, 'store');
-            renderChecklist('categories-list', result.data.categories, 'category');
+            currentStores = result.data.stores;
+            currentCategories = result.data.categories;
+            renderChecklist('stores-list', currentStores, 'store');
+            renderChecklist('categories-list', currentCategories, 'category');
         } else {
             throw new Error(result.error || 'Error desconocido');
         }

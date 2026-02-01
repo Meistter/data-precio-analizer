@@ -22,7 +22,11 @@
                 <div class="filter-group">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h3>Tiendas</h3>
-                        <button id="update-stores-btn" class="btn-small" title="Actualizar lista">↻</button>
+                        <div style="display: flex; gap: 5px;">
+                            <button id="clear-stores-btn" class="btn-small" title="Deseleccionar todas">✕</button>
+                            <button id="reset-stores-btn" class="btn-small" title="Restaurar por defecto">↩</button>
+                            <button id="update-stores-btn" class="btn-small" title="Actualizar lista">↻</button>
+                        </div>
                     </div>
                     <div id="stores-list" class="checklist">
                         <!-- Se llena con JS -->
@@ -33,7 +37,11 @@
                 <div class="filter-group">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h3>Categorías</h3>
-                        <button id="update-categories-btn" class="btn-small" title="Actualizar lista">↻</button>
+                        <div style="display: flex; gap: 5px;">
+                            <button id="clear-categories-btn" class="btn-small" title="Deseleccionar todas">✕</button>
+                            <button id="reset-categories-btn" class="btn-small" title="Restaurar por defecto">↩</button>
+                            <button id="update-categories-btn" class="btn-small" title="Actualizar lista">↻</button>
+                        </div>
                     </div>
                     <div id="categories-list" class="checklist">
                         <!-- Se llena con JS -->
